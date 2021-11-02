@@ -1,3 +1,5 @@
+#!/usr/bin/env lua
+
 -- declare our protocol
 isa_protocol = Proto("isa","ISA Protocol")
 isa_proto = {}
@@ -10,8 +12,7 @@ function isa_protocol.dissector(buffer, pinfo, tree)
   length = buffer:len()
   if length == 0 then return end
 
-  local subtree = tree:add(isa_protocol, buffer(), isa_proto.data)
-
+  subtree = tree:add(isa_protocol, buffer(), isa_proto.data)
   subtree:add("Data length: " .. length)
   if pinfo.src_port == isa_proto.port then 
     parse_response(buffer, pinfo, subtree)
@@ -24,7 +25,7 @@ function parse_response(buffer, pinfo, subtree)
   subtree:add("Sender: server")
   status = buffer(1, 4):string()
   local buff_pos = string.find(status, ' ')
-  status = status:gsub('err', 'error'):gsub('"', ''):gsub(' ', '')
+  status = status:gsub('err', 'error'):gsub('"', ''):gsub(' %(', ''):gsub(' ', '')
   subtree:add(buffer(1, buff_pos), "Response: " .. status)
   buff_pos = buff_pos + 1
 
@@ -32,17 +33,20 @@ function parse_response(buffer, pinfo, subtree)
     subtree:add(buffer(buff_pos, -1), "Message: " .. buffer(buff_pos, -1):string():sub(2, -3))
   else
     message = buffer(buff_pos, -1):string()
-    local passwd = string.match(message, "[%w%+/]+==?")
-    if passwd then
-      message_end = string.find(message, passwd)
+    local encoded_login = string.match(message, "[%w%+/]+==?")
+    local user_registered = string.match(message, 'registered%suser.*')
+    if encoded_login then
+      message_end = string.find(message, encoded_login)
       subtree:add(buffer(buff_pos, message_end - 3), "Message: " .. string.sub(message, 2, message_end - 4))
-      subtree:add(buffer(message_end + 2, -1), "Password: " .. passwd)
+      subtree:add(buffer(message_end + 2, -1), "Encoded password: " .. dec(encoded_login))
+    elseif user_registered then
+      message_end = string.find(message, user_registered)
+      subtree:add(buffer(message_end + 2, -1), "Registered user: " .. user_registered:sub(17, -3))
+    else
+      subtree:add(buffer(buff_pos, -1), "Message: " .. message:sub(2, -3))
     end
   end
-  -- local message = string.match(buffer(buff_pos, -1):string(), '.*registered.*')
-  -- if message then subtree:add(buffer(buff_pos + 1, -1), "Message: " .. message:sub(2, -3)) end
 end
-
 
 function parse_query(buffer, pinfo, subtree)
   subtree:add("Sender: client")
@@ -67,9 +71,29 @@ function parse_command(command, subtree, buffer, buff_pos)
     buff_pos = get_login_name()
     passwd = buffer(buff_pos, -1):string():sub(2, -3)
     subtree:add(buffer(buff_pos, -1), "Password: " .. dec(passwd))
-    -- if command == "list" then
+  elseif command == "send" then
+    buff_pos = buff_pos + 1
+    message = buffer(buff_pos, -1):string()
+    hashed_login = message:match("[%w%+/]+==?")
+    subtree:add(buffer(buff_pos + 1, hashed_login:len() + 2), "Hashed login: " .. hashed_login)
+    buff_pos = buff_pos + hashed_login:len()
+    message = message:sub(buff_pos, -1)
 
+    local payload_subtree = subtree:add(isa_protocol, buffer(), "Payload")
+    payload_subtree:add("Payload length: " .. message:len())
+    payload_subtree:add(buffer(buff_pos + 4, -1), "Payload (raw): " .. message:sub(1, -2))
 
+    recipient = message:sub(1, message:find("\" \""))
+    payload_subtree:add(buffer(buff_pos + 4, recipient:len()), "Recipient: " .. recipient:sub(2, -2))
+    buff_pos = buff_pos + recipient:len() + 1
+    message = message:sub(recipient:len() + 2)
+
+    subject = message:sub(1, message:find("\" \""))
+    payload_subtree:add(buffer(buff_pos + 4, subject:len()), "Subject: " .. subject:sub(2, -2))
+    buff_pos = buff_pos + subject:len() + 1
+    message = message:sub(subject:len() + 2)
+
+    payload_subtree:add(buffer(buff_pos + 4, -1), "Body: " .. message:sub(2, -3))
   end
 end
 
@@ -78,7 +102,7 @@ end
 -- licensed under the terms of the LGPL2
 
 -- character table string
-local b='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
+local b = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
 
 -- encoding
 function enc(data)
@@ -94,10 +118,8 @@ function enc(data)
   end)..({ '', '==', '=' })[#data%3+1])
 end
 
-
 -- decoding
 function dec(data)
-  local b='ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
   data = string.gsub(data, '[^'..b..'=]', '')
   return (data:gsub('.', function(x)
       if (x == '=') then return '' end
@@ -118,11 +140,3 @@ end
 tcp_table = DissectorTable.get("tcp.port")
 -- register our protocol to handle tcp port 32323
 tcp_table:add(isa_proto.port, isa_protocol)
-
--- register <username> <password>
--- login <username> <password>
--- list
--- send <recipient> <subject> <body>
--- fetch <id>
--- logout
-
