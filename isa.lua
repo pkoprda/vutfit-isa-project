@@ -35,6 +35,7 @@ function parse_response(buffer, pinfo, subtree)
     message = buffer(buff_pos, -1):string()
     local hashed_login = string.match(message, "[%w%+/]+==?")
     local user_registered = string.match(message, 'registered%suser.*')
+    local fetch_command = string.match(message, '%(%".*%)')
     local list_messages = string.match(message, '%(%(?.*%)%)?')
     if hashed_login then
       message_end = string.find(message, hashed_login)
@@ -43,13 +44,55 @@ function parse_response(buffer, pinfo, subtree)
     elseif user_registered then
       message_end = string.find(message, user_registered)
       subtree:add(buffer(message_end + 2, -1), "Registered user: " .. user_registered:sub(17, -3):gsub('\\"', '"'):gsub("\\\\", '\\'))
+    elseif fetch_command then
+      local payload_subtree = subtree:add(isa_protocol, buffer(4, -1), "Payload")
+      message = buffer(4, -1):string():sub(2, -3)
+      user_len = message:find('%" %"')
+      user = message:sub(2, user_len - 1)
+      buff_pos = buff_pos + 1
+      payload_subtree:add(buffer(buff_pos, user_len), "Message sender: " .. user)
+      buff_pos = buff_pos + user_len
+
+      message = buffer(buff_pos + 1, -1):string()
+      subject_len = message:find('%" %"')
+      subject = message:sub(2, subject_len - 1)
+      buff_pos = buff_pos + 1
+      payload_subtree:add(buffer(buff_pos, subject_len), "Message subject: " .. subject)
+      buff_pos = buff_pos + subject_len
+
+      message = buffer(buff_pos + 1, -1):string():sub(2, -4)
+      buff_pos = buff_pos + 1
+      payload_subtree:add(buffer(buff_pos, message:len() + 2), "Message: " .. message)
+
     elseif list_messages then
-      local payload_subtree = subtree:add(isa_protocol, buffer(), "Payload")
-      messages = list_messages:sub(2, -3)
-      payload_subtree:add("Payload length: " .. messages:len())
+      local payload_subtree = subtree:add(isa_protocol, buffer(4, -1), "Payload")
+      raw_messages = list_messages:sub(2, -3)
+      payload_subtree:add("Payload length: " .. raw_messages:len())
       payload_subtree:add(buffer(4, -1), "Payload (raw): " .. list_messages:sub(1, -2))
-      if messages:len() == 0 then payload_subtree:add("Message count: 0"); return end
-      last_message = string.match(list_messages, '%([^%(%)]*%)%)')
+      if raw_messages:len() == 0 then payload_subtree:add("Message count: 0"); return end
+      local count_messages = list_messages:match('%([^%(%)]*%)%)'):match('%d+')
+      payload_subtree:add("Message count: " .. count_messages)
+
+      buff_pos = 0
+      for i = 1, count_messages do
+        message = raw_messages:match("%([^%(^)]*%)")
+        local message_subtree = payload_subtree:add(isa_protocol, buffer(buff_pos + 5, message:len()), "Message " .. i)
+        message = message:sub(2, -2)
+        if raw_messages:find("%) %(") then
+          raw_messages = raw_messages:sub(raw_messages:find("%) %(") + 2, -1)
+        end
+        message = message:sub(message:find(' ') + 1, -1)
+        buff_pos = buff_pos + message:find(' ')
+        sender = message:sub(2, message:find(' ') - 2)
+        message_subtree:add(buffer(buff_pos, sender:len() + 2), "Message sender: " .. sender)
+        buff_pos = buff_pos + sender:len() + 2
+        message = message:sub(message:find(' ') + 1, -1)
+
+        subject = message:sub(2, -2)
+        message_subtree:add(buffer(buff_pos + 1, subject:len() + 2), "Message subject: " .. subject)
+        buff_pos = buff_pos + subject:len()
+      end
+
     else
       subtree:add(buffer(buff_pos, -1), "Message: " .. message:sub(2, -3))
     end
@@ -101,7 +144,15 @@ function parse_command(command, subtree, buffer, buff_pos)
     buff_pos = buff_pos + subject:len() + 1
     message = message:sub(subject:len() + 2)
 
-    payload_subtree:add(buffer(buff_pos + 4, -1), "Body: " .. message:sub(2, -3))  
+    payload_subtree:add(buffer(buff_pos + 4, -1), "Body: " .. message:sub(2, -3))
+  elseif command == "fetch" then
+    buff_pos = buff_pos + 2
+    message = buffer(buff_pos, -1):string()
+    hashed_login = message:match("[%w%+/]+==?")
+    subtree:add(buffer(buff_pos, hashed_login:len() + 2), "Hashed login: " .. hashed_login)
+    message_id = buffer(buff_pos + message:find(' '), -1):string()
+    buff_pos = buff_pos + message:find(' ')
+    subtree:add(buffer(buff_pos, message_id:len() - 1), "Message id: " .. message_id:sub(1, -2))
   elseif command == "logout" or command == "list" then
     buff_pos = buff_pos + 1
     message = buffer(buff_pos, -1):string():sub(3, -3)
