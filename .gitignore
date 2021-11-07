@@ -1,3 +1,7 @@
 recent
 recent_common
 profiles/
+.vscode/
+bin/client
+bin/server
+login-token
