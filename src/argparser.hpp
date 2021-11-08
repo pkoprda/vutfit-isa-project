@@ -15,10 +15,13 @@ class Arguments{
     public:
         string address;
         int port;
+        string target;
 
         static Arguments *parse_arguments(int argc, char *argv[]);
+        static Arguments *parse_commands(Arguments *arguments, int argc, char *argv[]);
         bool isNumber(const string& str);
         void print_help();
+        void print_usage(char* argv[0]);
 
     /**
      * Arguments constructor
