@@ -1,6 +1,8 @@
 #include <iostream>
+#include <fstream>
 #include <string>
 #include <getopt.h>
+#include "base64.h"
 
 using namespace std;
 
@@ -16,10 +18,13 @@ class Arguments{
         string address;
         int port;
         string target;
+        string target_user;
+        string target_passwd;
+        string target_args;
 
-        static Arguments *parse_arguments(int argc, char *argv[]);
-        static Arguments *parse_commands(Arguments *arguments, int argc, char *argv[]);
-        bool isNumber(const string& str);
+        static void parse_arguments(Arguments *arguments, int argc, char *argv[]);
+        static void parse_commands(Arguments *arguments, int argc, char *argv[]);
+        static string read_file(bool delete_file);
         void print_help();
         void print_usage(char* argv[0]);
 

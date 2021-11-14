@@ -1,7 +1,7 @@
 CC=g++
 SRC=src/*.cpp
 BIN=bin/client
-FLAGS= -std=c++11 -Wall -Wextra
+FLAGS= -std=c++17 -Wall -Wextra
 PACK=xkoprd00
 
 all: $(BIN)

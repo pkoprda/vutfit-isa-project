@@ -1,8 +1,7 @@
 #include "argparser.hpp"
 
 
-Arguments *Arguments::parse_arguments(int argc, char *argv[]){
-    Arguments *arguments = new Arguments();
+void Arguments::parse_arguments(Arguments *arguments, int argc, char *argv[]){
     int opt;
     int option_index = 0;
     static const char *short_options = "a:p:h";
@@ -33,9 +32,6 @@ Arguments *Arguments::parse_arguments(int argc, char *argv[]){
                     error_exit("%s: only one instance of one option from (-p --port) is allowed", argv[0]);
                 }
                 port_opt = true;
-                if (arguments->port < MIN_PORT || arguments->port > MAX_PORT || !arguments->isNumber(optarg)){
-                    error_exit("Port number must be between %d and %d", MIN_PORT, MAX_PORT);
-                }
                 break;
             case 'h':
                 arguments->print_help();
@@ -47,45 +43,66 @@ Arguments *Arguments::parse_arguments(int argc, char *argv[]){
                 exit(EXIT_FAILURE);
         }
     }
-    return arguments;
 }
 
-Arguments *Arguments::parse_commands(Arguments *arguments, int argc, char **argv){
+string Arguments::read_file(bool delete_file){
+    ifstream token_file;
+    string user_hash;
+    token_file.open("login-token");
+    if(token_file){
+        token_file >> user_hash;
+        token_file.close();
+        if(delete_file && remove("login-token") != 0){
+            error_exit("Error deleting file");
+        }
+    } else{
+        error_exit("Not logged in");
+    }
+    return user_hash;
+}
+
+void Arguments::parse_commands(Arguments *arguments, int argc, char **argv){
     if(optind == argc){
         arguments->print_usage(&argv[0]);
     }
 
     argc -= optind;
-    if(argv[optind] == string("list") || argv[optind] == string("logout")){
+    arguments->target = argv[1];
+    if(arguments->target == "list"){
         if(argc != 1){
-            error_exit("%s", argv[optind]);
+            error_exit("list");
         }
-        arguments->target = argv[optind];
-    } else if(argv[optind] == string("fetch")){
+        string user_hash = read_file(false);
+        arguments->target_args = '(' + arguments->target + " \"" + user_hash + "\")";
+    }
+    else if(arguments->target == "logout"){
+        if(argc != 1){
+            error_exit("logout");
+        }
+        string user_hash = read_file(true);
+        arguments->target_args = '(' + arguments->target + " \"" + user_hash + "\")";
+    } else if(arguments->target == "fetch"){
         if(argc != 2){
             error_exit("fetch <id>");
         }
-        arguments->target = "fetch";
-    } else if(argv[optind]  == string("register") || argv[optind]  == string("login")){
+        string user_hash = read_file(false);
+        arguments->target_args = '(' + arguments->target + " \"" + user_hash + "\" " + string(argv[2]) + ')';
+    } else if(arguments->target  == "register" || arguments->target  == "login"){
         if(argc != 3){
-            error_exit("%s <username> <password>", argv[optind]);
+            error_exit("%s <username> <password>", argv[1]);
         }
-        arguments->target = argv[optind];
-    } else if(argv[optind] == string("send")){
+        arguments->target_user = argv[2];
+        arguments->target_passwd = Base64::encode(string(argv[3]));
+        arguments->target_args = '(' + arguments->target + " \"" + arguments->target_user + "\" \"" + arguments->target_passwd + "\")";
+    } else if(arguments->target == "send"){
         if(argc != 4){
             error_exit("send <recipient> <subject> <body>");
         }
-        arguments->target = "send";
+        string user_hash = read_file(false);
+        arguments->target_args = '(' + arguments->target + " \"" + user_hash + "\" \"" + string(argv[2]) + "\" \"" + string(argv[3]) + "\" \"" + string(argv[4]) + "\")";
     } else{
         error_exit("unknown command");
     }
-    return arguments;
-}
-
-bool Arguments::isNumber(const string& str){
-    char *ptr;
-    strtol(str.c_str(), &ptr, 10);
-    return *ptr == '\0';
 }
 
 void Arguments::print_help(){
