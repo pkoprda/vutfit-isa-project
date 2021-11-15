@@ -92,7 +92,7 @@ function parse_response(buffer, pinfo, subtree)
           raw_messages = raw_messages:sub(raw_messages:find("%) %(") + 2, -1)
         end
         message = message:sub(message:find(' ') + 1, -1)
-        buff_pos = buff_pos + message:find(' ') + 1
+        buff_pos = buff_pos + message:find(' ') - 1
         sender = message:sub(2, message:find(' ') - 2)
         message_subtree:add(buffer(buff_pos, sender:len() + 2), "Message sender: " .. sender)
         buff_pos = buff_pos + sender:len() + 2

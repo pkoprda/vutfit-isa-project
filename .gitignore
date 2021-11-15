@@ -5,3 +5,4 @@ profiles/
 bin/client
 bin/server
 login-token
+isa.pcap
