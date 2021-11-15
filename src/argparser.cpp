@@ -1,7 +1,12 @@
+/**
+ * @file File for parsing command line arguments
+ * @author Peter Koprda <xkoprd00@stud.fit.vutbr.cz>
+ */
+
 #include "argparser.hpp"
 
 
-void Arguments::parse_arguments(Arguments *arguments, int argc, char *argv[]){
+void Arguments::parse_options(Arguments *arguments, int argc, char *argv[]){
     int opt;
     int option_index = 0;
     static const char *short_options = "a:p:h";
@@ -45,23 +50,7 @@ void Arguments::parse_arguments(Arguments *arguments, int argc, char *argv[]){
     }
 }
 
-string Arguments::read_file(bool delete_file){
-    ifstream token_file;
-    string user_hash;
-    token_file.open("login-token");
-    if(token_file){
-        token_file >> user_hash;
-        token_file.close();
-        if(delete_file && remove("login-token") != 0){
-            error_exit("Error deleting file");
-        }
-    } else{
-        error_exit("Not logged in");
-    }
-    return user_hash;
-}
-
-void Arguments::parse_commands(Arguments *arguments, int argc, char **argv){
+void Arguments::parse_commands(Arguments *arguments, int argc, char *argv[]){
     if(optind == argc){
         arguments->print_usage(&argv[0]);
     }
@@ -103,6 +92,22 @@ void Arguments::parse_commands(Arguments *arguments, int argc, char **argv){
     } else{
         error_exit("unknown command");
     }
+}
+
+string Arguments::read_file(bool delete_file){
+    ifstream token_file;
+    string user_hash;
+    token_file.open("login-token");
+    if(token_file){
+        token_file >> user_hash;
+        token_file.close();
+        if(delete_file && remove("login-token") != 0){
+            error_exit("Error deleting file");
+        }
+    } else{
+        error_exit("Not logged in");
+    }
+    return user_hash;
 }
 
 void Arguments::print_help(){

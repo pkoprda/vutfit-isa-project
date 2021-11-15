@@ -1,3 +1,9 @@
+/**
+ * @file Client implementation
+ * @author Peter Koprda <xkoprd00@stud.fit.vutbr.cz>
+ */
+
+#include "argparser.hpp"
 #include "client.hpp"
 
 
@@ -6,16 +12,17 @@ void Client::connect_to_server(Arguments *arguments, Client *client){
     struct addrinfo hints, *res, *p;
     char ipstr[INET6_ADDRSTRLEN];
     memset(&hints, 0, sizeof(hints));
+
     // assign IP, PORT
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
     hints.ai_flags = AI_PASSIVE;
-
     string port_str = to_string(arguments->port);
+
+    // check IP address or resolve hostname to IP address
     if((status = getaddrinfo((arguments->address).c_str(), port_str.c_str(), &hints, &res)) != 0){
         error_exit("getaddrinfo error: %s", gai_strerror(status));
     }
-
     for(p = res; p != NULL; p = p->ai_next){
         if(p->ai_family == AF_INET){ // IPv4
             struct sockaddr_in *ipv4 = (struct sockaddr_in *)p->ai_addr;
@@ -26,10 +33,13 @@ void Client::connect_to_server(Arguments *arguments, Client *client){
         }
     }
 
+    // create socket
     client->sockfd = socket(res->ai_family, res->ai_socktype, res->ai_protocol);
     if(client->sockfd == -1){
         error_exit("socket error: could not create socket");
     }
+
+    // connect to server
     if(connect(client->sockfd, res->ai_addr, res->ai_addrlen) == -1){
         error_exit("connection error: could not connect");
     }
@@ -57,6 +67,8 @@ string Client::send_message(Arguments *arguments, Client *client){
 string Client::print_response(Arguments *arguments, string buffer){
     string response = "";
     string status;
+
+    // logout response does not have status message
     if(arguments->target != "logout"){
         status = buffer.substr(1, 3);
         status.erase(status.find_last_not_of(' ') + 1);
@@ -118,17 +130,4 @@ string Client::print_response(Arguments *arguments, string buffer){
         }
     }
     return response + '\n';
-}
-
-
-int main(int argc, char* argv[]){
-    Arguments *arguments = new Arguments();
-    arguments->parse_arguments(arguments, argc, argv);
-    Client *client = new Client();
-    client->connect_to_server(arguments, client);
-    arguments->parse_commands(arguments, argc, argv);
-    string buffer = client->send_message(arguments, client);
-    string response = client->print_response(arguments, buffer);
-    cout << response;
-    return 0;
 }
