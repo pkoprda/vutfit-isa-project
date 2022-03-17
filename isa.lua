@@ -1,4 +1,3 @@
-#!/usr/bin/env lua
 -- Wireshark dissector
 -- Author: Peter Koprda <xkoprd00@stud.fit.vutbr.cz>
 
